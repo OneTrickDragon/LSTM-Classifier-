@@ -56,3 +56,13 @@ class Vocabulary(object):
     
     def __len__(self):
         return len(self._token_to_idx)
+    
+
+test = pd.read_csv("test.csv")
+train = pd.read_csv("train.csv")
+num_layers = 2 
+
+class GRU(nn.Module):
+    def __init__(self, input_size, hidden_size, batch_first = False):
+        super(GRU, self).__init__()
+        self.GRU = nn.GRU(input_size, hidden_size, num_layers)

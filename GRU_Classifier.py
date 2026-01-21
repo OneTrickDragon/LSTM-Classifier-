@@ -18,15 +18,17 @@ class Vocabulary(object):
                  eos_token = "<EOS>"):
         if token_to_idx == None:
             token_to_idx = {}
-
+        
+        self._unk_token = unk_token
+        self._sos_token = sos_token
+        self._eos_token = eos_token
+        self._unk_index = self.add_word(self._unk_token)
+        self._sos_index = self.add_word(self._sos_token)
+        self._eos_index = self.add_word(self._eos_token)
 
         self._token_to_idx = token_to_idx
         self._idx_to_token = {idx: token
                              for token, idx in self.token_to_idx.items()}
-        
-        self._unk_token = unk_token
-        self._sos_token = sos_token
-        self.eos_token = eos_token
         
     def add_word(self, token):
         if token in self._token_to_idx:
@@ -42,12 +44,14 @@ class Vocabulary(object):
     
     def build_vocabulary(self, sentences):
         for sentence in sentences:
-            current = []
+            sentence.append(self._eos_token)
+            sentence = self._sos_token + sentence
             sentence.strip.split(" ")
-            self.add_word(sentence)
+            self.add_words(sentence)
 
     def lookup_token(self, token):
-        self._token_to_idx[token]
+        if self._unk_index >= 0:
+            self._token_to_idx[token]
 
     def lookup_index(self, index):
         if index not in self._idx_to_token:

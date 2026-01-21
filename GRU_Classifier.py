@@ -14,13 +14,19 @@ import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 
 class Vocabulary(object):
-    def __init__(self, token_to_idx=None):
+    def __init__(self, token_to_idx=None, unk_token = "<UNK>", sos_token = "<SOS>", 
+                 eos_token = "<EOS>"):
         if token_to_idx == None:
             token_to_idx = {}
+
 
         self._token_to_idx = token_to_idx
         self._idx_to_token = {idx: token
                              for token, idx in self.token_to_idx.items()}
+        
+        self._unk_token = unk_token
+        self._sos_token = sos_token
+        self.eos_token = eos_token
         
     def add_word(self, token):
         if token in self._token_to_idx:
@@ -45,7 +51,7 @@ class Vocabulary(object):
 
     def lookup_index(self, index):
         if index not in self._idx_to_token:
-            raise KeyError("the index (%d) is not in the Vocabulary" % index)
+            return self._idx_to_token[self._unk_token]
         return self._idx_to_token[index]
     
     def __len__(self):

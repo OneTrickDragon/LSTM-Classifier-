@@ -35,28 +35,24 @@ class Vocabulary(object):
             index = self._token_to_idx[token]
         else:
             index = len(self._token_to_idx)
-            self._token_to_idx[index] = token
-            self._idx_to_token[token] = index
-        return token 
+            self._token_to_idx[token] = index
+            self._idx_to_token[index] = token
+        return index
     
     def add_words(self, tokens):
-        return [self.add_token(token) for token in tokens]
+        return [self.add_word(token) for token in tokens]
     
     def build_vocabulary(self, sentences):
         for sentence in sentences:
-            sentence.append(self._eos_token)
-            sentence = self._sos_token + sentence
-            sentence.strip.split(" ")
-            self.add_words(sentence)
+            tokens = sentence.lower().strip().split(" ")
+            full_sequence = [self._sos_token] + tokens + [self._eos_token]
+            self.add_words(full_sequence)
 
     def lookup_token(self, token):
-        if self._unk_index >= 0:
-            self._token_to_idx[token]
-
+        return self._token_to_idx.get(token, self._unk_index)
+    
     def lookup_index(self, index):
-        if index not in self._idx_to_token:
-            return self._idx_to_token[self._unk_token]
-        return self._idx_to_token[index]
+        return self._idx_to_token.get(index, self._unk_token)
     
     def __len__(self):
         return len(self._token_to_idx)

@@ -63,6 +63,35 @@ train = pd.read_csv("train.csv")
 num_layers = 2 
 
 class GRU(nn.Module):
-    def __init__(self, input_size, hidden_size, batch_first = False):
+    def __init__(self, input_size, hidden_size, num_layers, batch_first = False):
         super(GRU, self).__init__()
-        self.GRU = nn.GRU(input_size, hidden_size, num_layers)
+        self.rnn = nn.GRUCell(input_size, hidden_size)
+
+        self.hidden_size = hidden_size
+        self.batch_first = batch_first
+
+        def _intial_hidden(self, batch_size):
+            return torch.zeros((batch_size, hidden_size))
+        
+        def forward(self, x_in, initial_hidden = None):
+            if self.batch_first:
+                batch_size, seq_size, feat_size = x_in.size()
+                x_in = x_in.permute(1,0,2)
+            else:
+                seq_size, batch_size, feat_size = x_in.size()
+
+            hiddens = []
+            if initial_hidden is None:
+                initial_hidden = self._intial_hidden(batch_size)
+                initial_hidden = initial_hidden.to(x_in.device)
+
+            for t in range(seq_size):
+                hidden_t = self.rnn(x_in[t], hidden_t)
+                hiddens.append(hidden_t)
+
+            hiddens = torch.stack(hiddens)
+
+            if self.batch_first:
+                hiddens = hiddens.permute(1,0,2)
+            
+            return hiddens

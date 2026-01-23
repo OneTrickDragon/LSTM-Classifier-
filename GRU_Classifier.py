@@ -15,16 +15,18 @@ from torch.utils.data import Dataset, DataLoader
 
 class Vocabulary(object):
     def __init__(self, token_to_idx=None, unk_token = "<UNK>", sos_token = "<SOS>", 
-                 eos_token = "<EOS>"):
+                 eos_token = "<EOS>", mask_token = "<MASK>"):
         if token_to_idx == None:
             token_to_idx = {}
         
         self._unk_token = unk_token
         self._sos_token = sos_token
         self._eos_token = eos_token
+        self._mask_token = mask_token
         self._unk_index = self.add_word(self._unk_token)
         self._sos_index = self.add_word(self._sos_token)
         self._eos_index = self.add_word(self._eos_token)
+        self._mask_index = self.add_word(self._mask_token)
 
         self._token_to_idx = token_to_idx
         self._idx_to_token = {idx: token
@@ -57,6 +59,25 @@ class Vocabulary(object):
     def __len__(self):
         return len(self._token_to_idx)
     
+
+class TextVectorizer(object):
+    def __init__(self, text_vocab, author_vocab):
+        self.text_vocab = text_vocab
+        self.author_vocab = author_vocab
+
+    def vectorize(self, text, vector_length = -1):
+        indices = [self.text_vocab._sos_index]
+        indices.extend(self.text_vocab.lookup_token(token) for token in text)
+        indices.append(self.text_vocab._eos_index)
+
+        if vector_length <= 0:
+            vector_length = len(indices)
+
+        out_vector = np.zeros(vector_length, dtype=np.int64)
+        out_vector[:len(indices)] = indices
+        out_vector[len(indices):] = self.char_vocab.mask_index
+
+        return out_vector, len(indices)
 
 test = pd.read_csv("test.csv")
 train = pd.read_csv("train.csv")

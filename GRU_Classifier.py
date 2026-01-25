@@ -79,6 +79,16 @@ class TextVectorizer(object):
 
         return out_vector, len(indices)
 
+    def to_serializable(self):
+        return {
+            'vocabulary': self.vocabulary.to_serializable(),
+        }
+
+    @classmethod
+    def from_serializable(cls, contents):
+        vocab = Vocabulary.from_serializable(contents['vocabulary'])
+        return cls(vocabulary=vocab)
+
 test = pd.read_csv("test.csv")
 train = pd.read_csv("train.csv")
 num_layers = 2 

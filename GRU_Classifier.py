@@ -81,7 +81,8 @@ class TextVectorizer(object):
 
     def to_serializable(self):
         return {
-            'vocabulary': self.vocabulary.to_serializable(),
+            'text_vocabulary': self.text_vocab.to_serializable(),
+            'author_vocabulary': self.author_vcoab.to_serialize(),
         }
 
     @classmethod

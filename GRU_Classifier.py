@@ -58,8 +58,16 @@ class Vocabulary(object):
     
     def __len__(self):
         return len(self._token_to_idx)
-    
 
+    def to_serializable(self):
+        return {'token_to_idx': self._token_to_idx}
+    
+    @classmethod 
+    def from_serializable(cls, contents):
+        return cls**(contents)
+
+
+    
 class TextVectorizer(object):
     def __init__(self, text_vocab, author_vocab):
         self.text_vocab = text_vocab
@@ -87,8 +95,9 @@ class TextVectorizer(object):
 
     @classmethod
     def from_serializable(cls, contents):
-        vocab = Vocabulary.from_serializable(contents['vocabulary'])
-        return cls(vocabulary=vocab)
+        text_vocab = Vocabulary.from_serializable(contents['text_vocab'])
+        author_vocab =  Vocabulary.from_serializable(contents['author_vocab'])
+        return cls(text_vocab=text_vocab, author_vocab=author_vocab)
 
 test = pd.read_csv("test.csv")
 train = pd.read_csv("train.csv")

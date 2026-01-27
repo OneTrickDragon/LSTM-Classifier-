@@ -14,19 +14,9 @@ import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 
 class Vocabulary(object):
-    def __init__(self, token_to_idx=None, unk_token = "<UNK>", sos_token = "<SOS>", 
-                 eos_token = "<EOS>", mask_token = "<MASK>"):
+    def __init__(self, token_to_idx=None):
         if token_to_idx == None:
             token_to_idx = {}
-        
-        self._unk_token = unk_token
-        self._sos_token = sos_token
-        self._eos_token = eos_token
-        self._mask_token = mask_token
-        self._unk_index = self.add_word(self._unk_token)
-        self._sos_index = self.add_word(self._sos_token)
-        self._eos_index = self.add_word(self._eos_token)
-        self._mask_index = self.add_word(self._mask_token)
 
         self._token_to_idx = token_to_idx
         self._idx_to_token = {idx: token
@@ -98,6 +88,36 @@ class TextVectorizer(object):
         text_vocab = Vocabulary.from_serializable(contents['text_vocab'])
         author_vocab =  Vocabulary.from_serializable(contents['author_vocab'])
         return cls(text_vocab=text_vocab, author_vocab=author_vocab)
+
+
+class SequenceVocabulary(Vocabulary):
+    def __init__(self, token_to_idx=None, unk_token="<UNK>",
+                 mask_token="<MASK>", sos_token="<EOS>",
+                 eos_token="<SOS>"):
+        
+        super(SequenceVocabulary, self).__init__(token_to_idx)
+        self._unk_token = unk_token
+        self._sos_token = sos_token
+        self._eos_token = eos_token
+        self._mask_token = mask_token
+        self._unk_index = self.add_word(self._unk_token)
+        self._sos_index = self.add_word(self._sos_token)
+        self._eos_index = self.add_word(self._eos_token)
+        self._mask_index = self.add_word(self._mask_token)
+    
+    def to_serializable(self):
+        contents = super(SequenceVocabulary, self).to_serializable()
+        contents.update({'unk_token': self._unk_token,
+                         'mask_token': self._mask_token,
+                         'begin_seq_token': self._begin_seq_token,
+                         'end_seq_token': self._end_seq_token})
+        return contents
+    
+    def lookup_token(self, token):
+        if self.unk_index >= 0:
+            return self._token_to_idx.get(token, self.unk_index)
+        else:
+            return self._token_to_idx[token]
 
 test = pd.read_csv("test.csv")
 train = pd.read_csv("train.csv")

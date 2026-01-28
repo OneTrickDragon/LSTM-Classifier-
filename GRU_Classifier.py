@@ -33,18 +33,14 @@ class Vocabulary(object):
     
     def add_words(self, tokens):
         return [self.add_word(token) for token in tokens]
-    
-    def build_vocabulary(self, sentences):
-        for sentence in sentences:
-            tokens = sentence.lower().strip().split(" ")
-            full_sequence = [self._sos_token] + tokens + [self._eos_token]
-            self.add_words(full_sequence)
 
     def lookup_token(self, token):
-        return self._token_to_idx.get(token, self._unk_index)
+        return self._token_to_idx[token]
     
     def lookup_index(self, index):
-        return self._idx_to_token.get(index, self._unk_token)
+        if index not in self._idx_to_token:
+            raise KeyError("the index (%d) is not in the Vocabulary" % index)
+        return self._idx_to_token[index]
     
     def __len__(self):
         return len(self._token_to_idx)
@@ -54,10 +50,8 @@ class Vocabulary(object):
     
     @classmethod 
     def from_serializable(cls, contents):
-        return cls**(contents)
+        return cls(**contents)
 
-
-    
 class TextVectorizer(object):
     def __init__(self, text_vocab, author_vocab):
         self.text_vocab = text_vocab
@@ -73,14 +67,14 @@ class TextVectorizer(object):
 
         out_vector = np.zeros(vector_length, dtype=np.int64)
         out_vector[:len(indices)] = indices
-        out_vector[len(indices):] = self.char_vocab.mask_index
+        out_vector[len(indices):] = self.text_vocab.mask_index
 
         return out_vector, len(indices)
 
     def to_serializable(self):
         return {
             'text_vocabulary': self.text_vocab.to_serializable(),
-            'author_vocabulary': self.author_vcoab.to_serialize(),
+            'author_vocabulary': self.author_vocab.to_serializable(),
         }
 
     @classmethod
@@ -92,8 +86,8 @@ class TextVectorizer(object):
 
 class SequenceVocabulary(Vocabulary):
     def __init__(self, token_to_idx=None, unk_token="<UNK>",
-                 mask_token="<MASK>", sos_token="<EOS>",
-                 eos_token="<SOS>"):
+                 mask_token="<MASK>", sos_token="<SOS>",
+                 eos_token="<EOS>"):
         
         super(SequenceVocabulary, self).__init__(token_to_idx)
         self._unk_token = unk_token
@@ -109,12 +103,12 @@ class SequenceVocabulary(Vocabulary):
         contents = super(SequenceVocabulary, self).to_serializable()
         contents.update({'unk_token': self._unk_token,
                          'mask_token': self._mask_token,
-                         'begin_seq_token': self._begin_seq_token,
-                         'end_seq_token': self._end_seq_token})
+                         'sos_token': self._sos_token,
+                         'eos_token': self._eos_token})
         return contents
     
     def lookup_token(self, token):
-        if self.unk_index >= 0:
+        if self._unk_index >= 0:
             return self._token_to_idx.get(token, self.unk_index)
         else:
             return self._token_to_idx[token]
@@ -131,31 +125,32 @@ class GRU(nn.Module):
         self.hidden_size = hidden_size
         self.batch_first = batch_first
 
-        def _intial_hidden(self, batch_size):
-            return torch.zeros((batch_size, hidden_size))
+    def _intial_hidden(self, batch_size):
+        return torch.zeros((batch_size, self.hidden_size))
+    
+    def forward(self, x_in, initial_hidden = None):
+        if self.batch_first:
+            batch_size, seq_size, feat_size = x_in.size()
+            x_in = x_in.permute(1,0,2)
+        else:
+            seq_size, batch_size, feat_size = x_in.size()
+
+        hiddens = []
+        if initial_hidden is None:
+            initial_hidden = self._intial_hidden(batch_size)
+            initial_hidden = initial_hidden.to(x_in.device)
+
+        hidden_t = initial_hidden
+        for t in range(seq_size):
+            hidden_t = self.rnn(x_in[t], hidden_t)
+            hiddens.append(hidden_t)
+
+        hiddens = torch.stack(hiddens)
+
+        if self.batch_first:
+            hiddens = hiddens.permute(1,0,2)
         
-        def forward(self, x_in, initial_hidden = None):
-            if self.batch_first:
-                batch_size, seq_size, feat_size = x_in.size()
-                x_in = x_in.permute(1,0,2)
-            else:
-                seq_size, batch_size, feat_size = x_in.size()
-
-            hiddens = []
-            if initial_hidden is None:
-                initial_hidden = self._intial_hidden(batch_size)
-                initial_hidden = initial_hidden.to(x_in.device)
-
-            for t in range(seq_size):
-                hidden_t = self.rnn(x_in[t], hidden_t)
-                hiddens.append(hidden_t)
-
-            hiddens = torch.stack(hiddens)
-
-            if self.batch_first:
-                hiddens = hiddens.permute(1,0,2)
-            
-            return hiddens
+        return hiddens
 
 def column_gather(y_out, x_lengths):
     x_lengths = x_lengths.long().detach().cpu().numpy() - 1
@@ -189,7 +184,7 @@ class AuthorClassifier(nn.Module):
         else:
             y_out = y_out[:,-1:]
 
-        y_out = nn.ReLU(self.fc1(F.dropout(y_out,0.5)))
+        y_out = F.ReLU(self.fc1(F.dropout(y_out,0.5)))
         y_out = self.fc2(F.dropout(y_out,0.5))
 
         if apply_softmax:

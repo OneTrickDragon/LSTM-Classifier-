@@ -124,7 +124,7 @@ train = pd.read_csv("train.csv")
 num_layers = 2 
 
 class GRU(nn.Module):
-    def __init__(self, input_size, hidden_size, num_layers, batch_first = False):
+    def __init__(self, input_size, hidden_size, batch_first = False):
         super(GRU, self).__init__()
         self.rnn = nn.GRUCell(input_size, hidden_size)
 
@@ -156,3 +156,43 @@ class GRU(nn.Module):
                 hiddens = hiddens.permute(1,0,2)
             
             return hiddens
+
+def column_gather(y_out, x_lengths):
+    x_lengths = x_lengths.long().detach().cpu().numpy() - 1
+
+    out = []
+    for batch_index, column_index in enumerate(x_lengths):
+        out.append(y_out[batch_index, column_index])
+
+    return torch.stack(out)
+
+class AuthorClassifier(nn.Module):
+    def __init__(self, num_embeddings, embedding_size, num_classes, rnn_hidden_size, 
+                 batch_first = True, padding_idx=0):
+        super(AuthorClassifier, self).__init__()
+
+        self.emb = nn.Embedding(num_embeddings=num_embeddings,
+                                embedding_dim=embedding_size,
+                                padding_idx=padding_idx)
+        
+        self.GRU = GRU(input_size=embedding_size, hidden_size=rnn_hidden_size, batch_first=batch_first)
+        self.fc1 = nn.Linear(in_features=rnn_hidden_size, out_features= rnn_hidden_size)
+        self.fc2 = nn.Linear(in_features=rnn_hidden_size, out_features=num_classes)
+    
+    def forward(self, x_in, x_lengths, apply_softmax = False):
+        x_embedded = self.emb(x_in)
+        y_out = self.GRU(x_embedded)
+
+        if x_lengths is not None:
+            y_out = column_gather(y_out, x_lengths)
+        
+        else:
+            y_out = y_out[:,-1:]
+
+        y_out = nn.ReLU(self.fc1(F.dropout(y_out,0.5)))
+        y_out = self.fc2(F.dropout(y_out,0.5))
+
+        if apply_softmax:
+            y_out = F.softmax(y_out, dim=1)
+        
+        return y_out

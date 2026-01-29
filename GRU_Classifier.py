@@ -113,6 +113,18 @@ class SequenceVocabulary(Vocabulary):
             return self._token_to_idx.get(token, self.unk_index)
         else:
             return self._token_to_idx[token]
+        
+    def build_vocabulary(self, sentences, min_freq = 1):
+        word_count = Counter()
+
+        for sentence in sentences:
+            tokens = sentence.lower().strip().split(" ")
+            word_count.update(tokens)
+        
+        for word, count in word_count.items():
+            if count >= min_freq:
+                self.add_word(word)
+
 
 test = pd.read_csv("test.csv")
 train = pd.read_csv("train.csv")
@@ -216,11 +228,11 @@ class SpookyDataset(Dataset):
         train_df = pd.read_csv("train.csv")
         test_df = pd.read_csv("test.csv")
 
-        train_vocab = Vocabulary()
+        train_vocab = SequenceVocabulary()
         train_vocab.build_vocabulary(train_df.text.to_list())
 
         author_vocab = Vocabulary()
-        author_vocab.build_vocabulary(sorted(train_df.author.unique()))
+        author_vocab.add_words(sorted(train_df.author.unique()))
 
         vectorizer = TextVectorizer(train_vocab, author_vocab)
         return cls(train_df, test_df, vectorizer)
@@ -249,3 +261,49 @@ class SpookyDataset(Dataset):
     
     def num_batches(self, batch_size):
         return len(self)//batch_size
+
+args = Namespace(
+    train_csv="train.csv",
+    test_csv="test.csv",
+    vectorizer_file="vectorizer.json",
+    model_state_file="model.pth",
+    save_dir="model_storage",
+
+    embedding_size=128,
+    rnn_hidden_size=128,
+    num_layers=2, 
+    bidirectional=False,
+    
+
+    seed=1337,
+    learning_rate=0.001,
+    batch_size=64,
+    num_epochs=100,
+    early_stopping_criteria=5,
+
+    cuda=True,   
+    reload_from_file=False,
+    expand_filepaths_to_save_dir=True
+)
+
+def make_train_state(args):
+    return{
+        'stop_early': False,
+        'early_stopping_step': 0,
+        'early_stopping_best_val': 1e8,
+        'learning_rate': args.learning_rate,
+        'epoch_index': 0,
+        'train_loss': [],
+        'train_acc': [],
+        'val_loss': [],
+        'val_acc': [],
+        'test_loss': -1,
+        'test_acc': -1,
+        'model_filename': args.model_state_file
+    }
+
+def compute_accuracy(y_pred, y_target):
+    _, y_pred_indices = y_pred.max(dim=1)
+
+    n_correct = torch.eq(y_pred_indices, y_target).sum().item()
+    return n_correct / len(y_pred_indices) * 100

@@ -12,6 +12,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
+from sklearn.model_selection import train_test_split
 
 class Vocabulary(object):
     def __init__(self, token_to_idx=None):
@@ -117,9 +118,9 @@ test = pd.read_csv("test.csv")
 train = pd.read_csv("train.csv")
 num_layers = 2 
 
-class GRU(nn.Module):
+class gru(nn.Module):
     def __init__(self, input_size, hidden_size, batch_first = False):
-        super(GRU, self).__init__()
+        super(gru, self).__init__()
         self.rnn = nn.GRUCell(input_size, hidden_size)
 
         self.hidden_size = hidden_size
@@ -170,13 +171,13 @@ class AuthorClassifier(nn.Module):
                                 embedding_dim=embedding_size,
                                 padding_idx=padding_idx)
         
-        self.GRU = GRU(input_size=embedding_size, hidden_size=rnn_hidden_size, batch_first=batch_first)
+        self.gru = gru(input_size=embedding_size, hidden_size=rnn_hidden_size, batch_first=batch_first)
         self.fc1 = nn.Linear(in_features=rnn_hidden_size, out_features= rnn_hidden_size)
         self.fc2 = nn.Linear(in_features=rnn_hidden_size, out_features=num_classes)
     
     def forward(self, x_in, x_lengths, apply_softmax = False):
         x_embedded = self.emb(x_in)
-        y_out = self.GRU(x_embedded)
+        y_out = self.gru(x_embedded)
 
         if x_lengths is not None:
             y_out = column_gather(y_out, x_lengths)
@@ -191,3 +192,60 @@ class AuthorClassifier(nn.Module):
             y_out = F.softmax(y_out, dim=1)
         
         return y_out
+    
+class SpookyDataset(Dataset):
+    def __init__(self, train_df, test_df, vectorizer):
+        self.train_df, self.val_df = train_test_split(train_df, test_size=0.2, random_state=42)
+        self.test_df = test_df
+        self.vectorizer = vectorizer
+
+        self.train_size = len(self.train_df)
+        self.val_size = len(self.val_df)
+        self.test_size = len(self.test_df)
+
+        self._lookup_dict = {
+            "train": (self.train_df, self.train_size),
+            "val": (self.val_df, self.val_size),
+            "test": (self.test_df, self.test_size)
+        }
+
+        self.set_split('train')
+       
+    @classmethod
+    def load_and_make_vectorizer(cls, train_csv, test_csv):
+        train_df = pd.read_csv("train.csv")
+        test_df = pd.read_csv("test.csv")
+
+        train_vocab = Vocabulary()
+        train_vocab.build_vocabulary(train_df.text.to_list())
+
+        author_vocab = Vocabulary()
+        author_vocab.build_vocabulary(sorted(train_df.author.unique()))
+
+        vectorizer = TextVectorizer(train_vocab, author_vocab)
+        return cls(train_df, test_df, vectorizer)
+    
+    def set_split(self, split="train"):
+        self._target_split = split 
+        self._target_df, self._target_size = self._lookup_dict[split]
+
+    def __len__(self):
+        return self._target_size
+    
+    def __getitem__(self, index):
+        row = self._target_df.iloc[index]
+
+        from_vector, length = self.vectorizer.vectorize(row.text)
+
+        if self._target_split=='test':
+            author_index = -1
+        
+        else:
+            author_index = self.vectorizer.author_vocab.lookup_token(row.author)
+
+        return {'x_data': from_vector,
+                'y_target': author_index,
+                'x_lengths': length}
+    
+    def num_batches(self, batch_size):
+        return len(self)//batch_size

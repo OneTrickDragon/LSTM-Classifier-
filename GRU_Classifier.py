@@ -275,7 +275,7 @@ args = Namespace(
     bidirectional=False,
     
 
-    seed=1337,
+    seed=9248,
     learning_rate=0.001,
     batch_size=64,
     num_epochs=100,
@@ -307,3 +307,23 @@ def compute_accuracy(y_pred, y_target):
 
     n_correct = torch.eq(y_pred_indices, y_target).sum().item()
     return n_correct / len(y_pred_indices) * 100
+
+dataset = SpookyDataset.load_dataset_and_make_vectorizer(args.train_csv, args.test_csv)
+vectorizer = dataset.vectorizer
+model = AuthorClassifier(
+    num_embeddings=len(vectorizer.text_vocab), 
+    embedding_size=args.embedding_size, 
+    rnn_hidden_size=args.rnn_hidden_size,
+    num_classes=len(vectorizer.author_vocab),
+    batch_first=True,
+    padding_idx=vectorizer.text_vocab._mask_index 
+)
+
+device = torch.device("cuda" if args.cuda and torch.cuda.is_available() else "cpu")
+args.device = device
+model = model.to(device)
+loss_func = nn.CrossEntropyLoss(weight=dataset.class_weights.to(args.device))
+optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
+scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=1)
+
+train_state = make_train_state(args)

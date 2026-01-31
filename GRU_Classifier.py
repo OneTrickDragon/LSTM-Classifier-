@@ -327,3 +327,60 @@ optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
 scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=1)
 
 train_state = make_train_state(args)
+
+def generate_batches(dataset, batch_size, shuffle=True, 
+                     drop_last=True, device="cpu"): 
+    dataloader = DataLoader(dataset=dataset, batch_size=batch_size,
+                            shuffle=shuffle, drop_last=drop_last)
+
+    for data_dict in dataloader:
+        out_data_dict = {}
+        for name, tensor in data_dict.items():
+            out_data_dict[name] = data_dict[name].to(device)
+        yield out_data_dict
+
+try:
+    for epoch_index in range(args.num_epochs):
+        train_state['epoch_index'] = epoch_index
+        dataset.set_splti('train')
+        batch_generator = generate_batches(dataset, batch_size=args.batch_size, device=args.device)
+        running_loss = 0.0
+        running_acc = 0.0
+        model.train()
+        for batch_index, batch_dict in enumerate(batch_generator):
+            optimizer.zero_grad()
+            y_pred = model(batch_dict['x_data'], batch_dict['x_lengths'])
+            loss = loss_func(y_pred, batch_dict['y_target'])
+            running_loss += (loss.item() - running_loss)/(batch_index + 1)
+            loss.backward()
+            optimizer.step()
+
+            acc_t = compute_accuracy(y_pred, batch_dict['y_target'])
+            running_acc += (acc_t - running_acc)/(batch_index + 1)
+        train_state['train_loss'].append(running_loss)
+        train_state['trian_acc'].append(running_acc)
+        
+        dataset.set_split('val')
+        batch_generator = generate_batches(dataset, batch_size=args.batch_size, device=args.device)
+        running_loss  = 0.0
+        running_acc = 0.0
+        model.eval()
+
+        for batch_index, batch_dict in enumerate(batch_generator):
+            y_pred = model(batch_dict['x_data'], batch_dict['x_lengths'])
+
+            loss = loss_func(y_pred, batch_dict['y_target'])
+            running_loss += (loss.item() - running_loss)/(batch_index + 1)
+
+            acc_t = compute_accuracy(y_pred, batch_dict['y_target'])
+            running_acc += (acc_t - running_acc)/(batch_index + 1)
+
+        train_state['val_loss'].append(running_loss)
+        train_state['val_acc'].append(running_acc)
+
+
+        if train_state['stsop_early']:
+            break
+
+except KeyboardInterrupt:
+    print("Exiting loop")

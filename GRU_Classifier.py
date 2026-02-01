@@ -328,6 +328,29 @@ scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0
 
 train_state = make_train_state(args)
 
+def update_train_state(args, model, train_state):
+    if train_state['epoch_index'] == 0:
+        torch.save(model.state_dict(), train_state['model_filename'])
+        train_state['stop_early'] = False
+
+    elif train_state['epoch_index'] >= 1:
+        loss_tm1, loss_t = train_state['val_loss'][-2:]
+         
+        if loss_t >= loss_tm1:
+            train_state['early_stopping_step'] += 1
+     
+        else:
+            if loss_t < train_state['early_stopping_best_val']:
+                torch.save(model.state_dict(), train_state['model_filename'])
+                train_state['early_stopping_best_val'] = loss_t
+
+            train_state['early_stopping_step'] = 0
+
+        train_state['stop_early'] = \
+            train_state['early_stopping_step'] >= args.early_stopping_criteria
+
+    return train_state
+
 def generate_batches(dataset, batch_size, shuffle=True, 
                      drop_last=True, device="cpu"): 
     dataloader = DataLoader(dataset=dataset, batch_size=batch_size,
@@ -378,9 +401,33 @@ try:
         train_state['val_loss'].append(running_loss)
         train_state['val_acc'].append(running_acc)
 
-
-        if train_state['stsop_early']:
+        train_state = update_train_state(args, model, train_state)
+        if train_state['stop_early']:
             break
 
 except KeyboardInterrupt:
     print("Exiting loop")
+
+
+model.load_state_dict(torch.load(train_state['model_filename']))
+model.to(args.device)
+model.eval()
+
+dataset.set_split('test')
+
+batch_generator = generate_batches(dataset, batch_size=args.batch_size, device=args.device, shuffle=False)
+
+submission_results = []
+with torch.no_grad():
+    for batch_index, batch_dict in enumerate(batch_generator):
+        y_pred = model(batch_dict['x_data'], batch_dict['x_lengths'])
+        y_prob = F.softmax(y_pred, dim=1).cpu().numpy()
+        submission_results.extend(y_prob)
+
+columns = [dataset.vectorizer.author_vocab.lookup_index(i) for i in range(3)]
+submission_df = pd.DataFrame(submission_results, columns=columns)
+
+test_original = pd.read_csv(args.test_csv)
+submission_df.insert(0, "id", test_original["id"])
+
+submission_df.to_csv("submission.csv", index=False)

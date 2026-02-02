@@ -21,7 +21,7 @@ class Vocabulary(object):
 
         self._token_to_idx = token_to_idx
         self._idx_to_token = {idx: token
-                             for token, idx in self.token_to_idx.items()}
+                             for token, idx in self._token_to_idx.items()}
         
     def add_word(self, token):
         if token in self._token_to_idx:
@@ -67,10 +67,11 @@ class TextVectorizer(object):
             vector_length = len(indices)
 
         out_vector = np.zeros(vector_length, dtype=np.int64)
-        out_vector[:len(indices)] = indices
-        out_vector[len(indices):] = self.text_vocab.mask_index
+        copy_len = min(len(indices), vector_length)
+        out_vector[:copy_len] = indices[:copy_len]
+        out_vector[copy_len:] = self.text_vocab._mask_index
 
-        return out_vector, len(indices)
+        return out_vector, copy_len
 
     def to_serializable(self):
         return {
@@ -110,7 +111,7 @@ class SequenceVocabulary(Vocabulary):
     
     def lookup_token(self, token):
         if self._unk_index >= 0:
-            return self._token_to_idx.get(token, self.unk_index)
+            return self._token_to_idx.get(token, self._unk_index)
         else:
             return self._token_to_idx[token]
         
@@ -197,7 +198,7 @@ class AuthorClassifier(nn.Module):
         else:
             y_out = y_out[:,-1:]
 
-        y_out = F.ReLU(self.fc1(F.dropout(y_out,0.5)))
+        y_out = F.relu(self.fc1(F.dropout(y_out,0.5)))
         y_out = self.fc2(F.dropout(y_out,0.5))
 
         if apply_softmax:
@@ -222,7 +223,13 @@ class SpookyDataset(Dataset):
         }
 
         self.set_split('train')
-       
+        class_counts = self.train_df.author.value_counts().to_dict()
+        def sort_key(item):
+            return self.vectorizer.author_vocab.lookup_token(item[0])
+        sorted_counts = sorted(class_counts.items(), key=sort_key)
+        frequencies = [count for _, count in sorted_counts]
+        self.class_weights = 1.0 / torch.tensor(frequencies, dtype=torch.float32)     
+
     @classmethod
     def load_and_make_vectorizer(cls, train_csv, test_csv):
         train_df = pd.read_csv("train.csv")
@@ -247,7 +254,7 @@ class SpookyDataset(Dataset):
     def __getitem__(self, index):
         row = self._target_df.iloc[index]
 
-        from_vector, length = self.vectorizer.vectorize(row.text)
+        from_vector, length = self.vectorizer.vectorize(row.text, vector_length=args.max_seq_length)
 
         if self._target_split=='test':
             author_index = -1
@@ -274,7 +281,7 @@ args = Namespace(
     num_layers=2, 
     bidirectional=False,
     
-
+    max_seq_length=150,
     seed=9248,
     learning_rate=0.001,
     batch_size=64,
@@ -308,7 +315,7 @@ def compute_accuracy(y_pred, y_target):
     n_correct = torch.eq(y_pred_indices, y_target).sum().item()
     return n_correct / len(y_pred_indices) * 100
 
-dataset = SpookyDataset.load_dataset_and_make_vectorizer(args.train_csv, args.test_csv)
+dataset = SpookyDataset.load_and_make_vectorizer(args.train_csv, args.test_csv)
 vectorizer = dataset.vectorizer
 model = AuthorClassifier(
     num_embeddings=len(vectorizer.text_vocab), 
@@ -365,7 +372,7 @@ def generate_batches(dataset, batch_size, shuffle=True,
 try:
     for epoch_index in range(args.num_epochs):
         train_state['epoch_index'] = epoch_index
-        dataset.set_splti('train')
+        dataset.set_split('train')
         batch_generator = generate_batches(dataset, batch_size=args.batch_size, device=args.device)
         running_loss = 0.0
         running_acc = 0.0
@@ -381,7 +388,7 @@ try:
             acc_t = compute_accuracy(y_pred, batch_dict['y_target'])
             running_acc += (acc_t - running_acc)/(batch_index + 1)
         train_state['train_loss'].append(running_loss)
-        train_state['trian_acc'].append(running_acc)
+        train_state['train_acc'].append(running_acc)
         
         dataset.set_split('val')
         batch_generator = generate_batches(dataset, batch_size=args.batch_size, device=args.device)
@@ -411,12 +418,11 @@ except KeyboardInterrupt:
 
 model.load_state_dict(torch.load(train_state['model_filename']))
 model.to(args.device)
-model.eval()
-
 dataset.set_split('test')
 
-batch_generator = generate_batches(dataset, batch_size=args.batch_size, device=args.device, shuffle=False)
+batch_generator = generate_batches(dataset, batch_size=args.batch_size, device=args.device, shuffle=False, drop_last=False)
 
+model.eval()
 submission_results = []
 with torch.no_grad():
     for batch_index, batch_dict in enumerate(batch_generator):

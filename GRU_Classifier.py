@@ -131,6 +131,26 @@ test = pd.read_csv("test.csv")
 train = pd.read_csv("train.csv")
 num_layers = 2 
 
+class Attention(nn.Module):
+    def __init__(self, hidden_dim):
+        super(Attention, self).__init__()
+        self.attn = nn.Linear(hidden_dim, hidden_dim)
+        self.v = nn.Parameter(torch.rand(hidden_dim))
+
+    def forward(self, hidden_states, mask=None):
+        # hidden_states: (batch, seq_len, hidden_dim)
+        energy = torch.tanh(self.attn(hidden_states)) 
+        
+        v = self.v.repeat(energy.size(0), 1).unsqueeze(1) # (batch, 1, hidden_dim)
+        weights = torch.bmm(v, energy.transpose(1, 2)).squeeze(1) # (batch, seq_len)
+
+        if mask is not None:
+            weights = weights.masked_fill(mask == 0, -1e9)
+
+        attn_weights = F.softmax(weights, dim=1) # (batch, seq_len)
+        context = torch.bmm(attn_weights.unsqueeze(1), hidden_states).squeeze(1)
+        return context, attn_weights
+    
 class gru(nn.Module):
     def __init__(self, input_size, hidden_size, batch_first = False):
         super(gru, self).__init__()

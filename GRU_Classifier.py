@@ -203,15 +203,27 @@ class AuthorClassifier(nn.Module):
         self.emb = nn.Embedding(num_embeddings=num_embeddings,
                                 embedding_dim=embedding_size,
                                 padding_idx=padding_idx)
-        
+        """"
         self.gru = gru(input_size=embedding_size, hidden_size=rnn_hidden_size, batch_first=batch_first)
         self.fc1 = nn.Linear(in_features=rnn_hidden_size, out_features= rnn_hidden_size)
         self.fc2 = nn.Linear(in_features=rnn_hidden_size, out_features=num_classes)
-    
-    def forward(self, x_in, x_lengths, apply_softmax = False):
-        x_embedded = self.emb(x_in)
-        y_out = self.gru(x_embedded)
+        """
 
+        self.gru = nn.GRU(num_embeddings= num_embeddings,
+                          hidden_size=rnn_hidden_size,
+                          bidirectional=True,
+                          batch_first=batch_first)
+        self.attention = Attention(2*rnn_hidden_size)
+        self.fc1 = nn.Linear(in_features=rnn_hidden_size*2, out_features=rnn_hidden_size)
+        self.fc2 = nn.Linear(in_features=rnn_hidden_size, out_features=num_classes)
+        self.dropout = nn.Dropout(0.5)
+
+    def forward(self, x_in, x_lengths, apply_softmax = False):
+        #x_embedded = self.emb(x_in)
+        x_embedded = self.dropout(self.emb(x_in))
+        #y_out = self.gru(x_embedded)
+        y_out, _ = self.gru(x_embedded)
+        """
         if x_lengths is not None:
             y_out = column_gather(y_out, x_lengths)
         
@@ -225,6 +237,8 @@ class AuthorClassifier(nn.Module):
             y_out = F.softmax(y_out, dim=1)
         
         return y_out
+        """
+        
     
 class SpookyDataset(Dataset):
     def __init__(self, train_df, test_df, vectorizer):

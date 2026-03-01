@@ -238,7 +238,16 @@ class AuthorClassifier(nn.Module):
         
         return y_out
         """
+        mask = (x_in != 0).float() if x_in.sum() > 0 else None
+        z_attn, weights = self.attention(y_out, mask=mask)
+        y_out = F.relu(self.fc1(self.dropout(z_attn)))
+        y_out = self.fc2(self.dropout(y_out))
+
+        if apply_softmax:
+            y_out = F.softmax(y_out, dim=1)
         
+        return y_out
+
     
 class SpookyDataset(Dataset):
     def __init__(self, train_df, test_df, vectorizer):

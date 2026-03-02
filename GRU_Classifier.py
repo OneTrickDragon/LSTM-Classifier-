@@ -245,7 +245,6 @@ class AuthorClassifier(nn.Module):
 
         if apply_softmax:
             y_out = F.softmax(y_out, dim=1)
-        
         return y_out
 
     
@@ -322,7 +321,7 @@ args = Namespace(
     embedding_size=128,
     rnn_hidden_size=128,
     num_layers=2, 
-    bidirectional=False,
+    bidirectional=True,
     
     max_seq_length=150,
     seed=9248,

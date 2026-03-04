@@ -209,7 +209,7 @@ class AuthorClassifier(nn.Module):
         self.fc2 = nn.Linear(in_features=rnn_hidden_size, out_features=num_classes)
         """
 
-        self.gru = nn.GRU(num_embeddings= num_embeddings,
+        self.gru = nn.GRU(input_size=embedding_size,
                           hidden_size=rnn_hidden_size,
                           bidirectional=True,
                           batch_first=batch_first)
